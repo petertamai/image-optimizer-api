@@ -1,5 +1,3 @@
-Okay, here are a comprehensive set of examples for interacting with the Image Optimizer API, assuming your base URL is `https://imgopt.petertam.pro/` and your API key is `test`.  I'll cover all the documented endpoints and parameter combinations.
-
 **Important Notes:**
 
 *   **API Key:**  Remember to replace `"test"` with your actual API key in all requests.
