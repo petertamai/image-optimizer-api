@@ -1,10 +1,9 @@
 'use strict';
 
+const axios = require('axios');
 const { fileTypeFromBuffer } = require('file-type');
 const fs = require('fs').promises;
 const config = require('./config');
-const https = require('https');
-const http = require('http');
 
 /**
  * ImageLoader - Handles loading images from URLs or binary data
@@ -18,63 +17,40 @@ class ImageLoader {
    */
   async fromUrl(url) {
     try {
-      // Download the image using Node.js native http/https modules
-      const imageBuffer = await this.downloadImage(url);
+      // Configure request options
+      const options = {
+        timeout: 15000,
+        responseType: 'arraybuffer',
+        headers: {
+          'User-Agent': 'Image-Optimizer-API/1.0',
+          'Accept': 'image/*'
+        },
+        maxRedirects: 5
+      };
+      
+      // Download the image using axios
+      const response = await axios.get(url, options);
+      const imageBuffer = Buffer.from(response.data);
       
       // Validate the image
       return this.validateAndIdentifyImage(imageBuffer);
     } catch (error) {
       console.error(`Error downloading image from ${url}:`, error);
       
-      const err = new Error(`Failed to download image from URL: ${error.message}`);
+      let message = 'Network error';
+      if (error.response) {
+        message = `HTTP error: ${error.response.status}`;
+      } else if (error.request) {
+        message = 'No response received';
+      } else {
+        message = error.message;
+      }
+      
+      const err = new Error(`Failed to download image from URL: ${message}`);
       err.name = 'DownloadError';
       err.original = error;
       throw err;
     }
-  }
-  
-  /**
-   * Download image from URL using native http/https modules
-   * 
-   * @param {String} url - Image URL
-   * @returns {Promise<Buffer>} Image buffer
-   */
-  downloadImage(url) {
-    return new Promise((resolve, reject) => {
-      const parsedUrl = new URL(url);
-      const requestLib = parsedUrl.protocol === 'https:' ? https : http;
-      
-      const options = {
-        headers: {
-          'User-Agent': 'Image-Optimizer-API/1.0',
-          'Accept': 'image/*'
-        },
-        timeout: 15000
-      };
-      
-      const req = requestLib.get(url, options, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          // Handle redirects
-          return resolve(this.downloadImage(res.headers.location));
-        }
-        
-        if (res.statusCode !== 200) {
-          return reject(new Error(`HTTP error: ${res.statusCode}`));
-        }
-        
-        const chunks = [];
-        res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
-      });
-      
-      req.on('error', reject);
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error('Request timed out'));
-      });
-      
-      req.end();
-    });
   }
   
   /**
