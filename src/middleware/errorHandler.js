@@ -1,6 +1,6 @@
 'use strict';
 
-const { constants } = require('../config');
+const config = require('../config');
 
 /**
  * Global error handling middleware
@@ -22,19 +22,19 @@ module.exports = (err, req, res, next) => {
   } else if (err.name === 'FileTypeError') {
     statusCode = 415;
     message = 'Unsupported file type';
-    errorCode = constants.ERROR_CODES.UNSUPPORTED_FORMAT;
+    errorCode = config.constants.ERROR_CODES.UNSUPPORTED_FORMAT;
   } else if (err.name === 'DownloadError') {
     statusCode = 400;
     message = 'Could not download the image from the provided URL';
-    errorCode = constants.ERROR_CODES.INVALID_URL;
+    errorCode = config.constants.ERROR_CODES.INVALID_URL;
   } else if (err.name === 'ProcessingError') {
     statusCode = 422;
     message = 'Error processing the image';
-    errorCode = constants.ERROR_CODES.PROCESSING_ERROR;
+    errorCode = config.constants.ERROR_CODES.PROCESSING_ERROR;
   } else if (err.name === 'PayloadTooLargeError') {
     statusCode = 413;
     message = 'File too large';
-    errorCode = constants.ERROR_CODES.FILE_TOO_LARGE;
+    errorCode = config.constants.ERROR_CODES.FILE_TOO_LARGE;
   }
   
   // Send standardized error response
