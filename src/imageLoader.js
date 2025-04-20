@@ -1,6 +1,7 @@
 'use strict';
 
-const axios = require('axios');
+const https = require('https');
+const http = require('http');
 const { fileTypeFromBuffer } = require('file-type');
 const fs = require('fs').promises;
 const config = require('./config');
@@ -17,40 +18,95 @@ class ImageLoader {
    */
   async fromUrl(url) {
     try {
-      // Configure request options
-      const options = {
-        timeout: 15000,
-        responseType: 'arraybuffer',
-        headers: {
-          'User-Agent': 'Image-Optimizer-API/1.0',
-          'Accept': 'image/*'
-        },
-        maxRedirects: 5
-      };
-      
-      // Download the image using axios
-      const response = await axios.get(url, options);
-      const imageBuffer = Buffer.from(response.data);
+      // Download the image
+      const imageBuffer = await this.downloadImage(url);
       
       // Validate the image
       return this.validateAndIdentifyImage(imageBuffer);
     } catch (error) {
       console.error(`Error downloading image from ${url}:`, error);
       
-      let message = 'Network error';
-      if (error.response) {
-        message = `HTTP error: ${error.response.status}`;
-      } else if (error.request) {
-        message = 'No response received';
-      } else {
-        message = error.message;
-      }
-      
-      const err = new Error(`Failed to download image from URL: ${message}`);
+      const err = new Error(`Failed to download image from URL: ${error.message}`);
       err.name = 'DownloadError';
       err.original = error;
       throw err;
     }
+  }
+  
+  /**
+   * Download image from URL using native http/https modules
+   * 
+   * @param {String} url - Image URL
+   * @param {Number} redirectCount - Current redirect count (to prevent infinite redirects)
+   * @returns {Promise<Buffer>} Image buffer
+   */
+  downloadImage(url, redirectCount = 0) {
+    return new Promise((resolve, reject) => {
+      // Prevent too many redirects
+      if (redirectCount > 5) {
+        return reject(new Error('Too many redirects'));
+      }
+      
+      try {
+        const parsedUrl = new URL(url);
+        const protocol = parsedUrl.protocol === 'https:' ? https : http;
+        
+        const options = {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Image-Optimizer-API/1.0',
+            'Accept': 'image/*'
+          },
+          timeout: 15000
+        };
+        
+        const req = protocol.request(url, options, (res) => {
+          // Handle redirects
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            return this.downloadImage(res.headers.location, redirectCount + 1)
+              .then(resolve)
+              .catch(reject);
+          }
+          
+          // Handle errors
+          if (res.statusCode !== 200) {
+            return reject(new Error(`HTTP error: ${res.statusCode}`));
+          }
+          
+          // Collect the data
+          const chunks = [];
+          let totalLength = 0;
+          
+          res.on('data', (chunk) => {
+            chunks.push(chunk);
+            totalLength += chunk.length;
+            
+            // Prevent large files from being downloaded
+            if (totalLength > config.constants.MAX_FILE_SIZE) {
+              req.destroy();
+              reject(new Error('File too large'));
+            }
+          });
+          
+          res.on('end', () => {
+            resolve(Buffer.concat(chunks));
+          });
+        });
+        
+        req.on('error', (err) => {
+          reject(err);
+        });
+        
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Request timed out'));
+        });
+        
+        req.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
   
   /**
