@@ -1,6 +1,7 @@
 'use strict';
 
-const got = require('got');
+// In Got v12+, we need to import it as an ESM module
+import got from 'got';
 const { fileTypeFromBuffer } = require('file-type');
 const fs = require('fs').promises;
 const config = require('./config');
@@ -28,9 +29,12 @@ class ImageLoader {
         }
       };
       
-      // Download the image
-      const response = await got(url, options);
-      const imageBuffer = response.body;
+      // Download the image using fetch API as an alternative to got
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      }
+      const imageBuffer = Buffer.from(await response.arrayBuffer());
       
       // Validate the image
       return this.validateAndIdentifyImage(imageBuffer);
