@@ -6,6 +6,10 @@ const fs = require('fs').promises;
 const { nanoid } = require('nanoid');
 const config = require('./config');
 
+// Configure Sharp for better memory management
+sharp.cache(false); // Disable caching to reduce memory usage
+sharp.simd(true); // Enable SIMD if available
+
 /**
  * Image Processor - Handles all image transformation operations
  */
@@ -20,10 +24,15 @@ class ImageProcessor {
   async processImage(imageBuffer, options) {
     try {
       const originalSize = imageBuffer.length;
-      const metadata = await sharp(imageBuffer).metadata();
+      
+      // Get minimal metadata instead of full metadata to reduce memory usage
+      const metadata = await sharp(imageBuffer, { failOnError: false }).metadata();
       
       // Create Sharp instance with the input image
-      let image = sharp(imageBuffer);
+      let image = sharp(imageBuffer, { 
+        failOnError: false,
+        limitInputPixels: 50000000 // Limit input to 50MP to prevent memory issues
+      });
       
       // Set default options if not provided
       const processingOptions = this.normalizeOptions(options, metadata);
@@ -44,6 +53,10 @@ class ImageProcessor {
         processingOptions, 
         metadata
       );
+      
+      // Explicitly remove references to help GC
+      imageBuffer = null;
+      image = null;
       
       // Save the processed image
       const filename = `${nanoid(10)}.${format}`;
@@ -81,9 +94,14 @@ class ImageProcessor {
   async processPipeline(imageBuffer, steps) {
     try {
       const originalSize = imageBuffer.length;
-      const metadata = await sharp(imageBuffer).metadata();
       
-      let image = sharp(imageBuffer);
+      // Get minimal metadata to reduce memory usage
+      const metadata = await sharp(imageBuffer, { failOnError: false }).metadata();
+      
+      let image = sharp(imageBuffer, { 
+        failOnError: false,
+        limitInputPixels: 50000000 // Limit input to 50MP to prevent memory issues
+      });
       let currentFormat = metadata.format;
       let currentMetadata = metadata;
       
@@ -143,6 +161,10 @@ class ImageProcessor {
       
       // Finalize the image
       const { buffer, format, info } = await this.finalizeImage(image, currentFormat);
+      
+      // Explicitly remove references to help GC
+      imageBuffer = null;
+      image = null;
       
       // Save the processed image
       const filename = `${nanoid(10)}.${format}`;
@@ -308,21 +330,30 @@ class ImageProcessor {
     switch (format) {
       case 'jpeg':
       case 'jpg':
-        return image.jpeg({ quality: quality || 80 });
+        return image.jpeg({ 
+          quality: quality || 80,
+          mozjpeg: true // Use MozJPEG for better compression
+        });
         
       case 'png':
-        return image.png({ quality: quality || 80 });
+        return image.png({ 
+          quality: quality || 80,
+          compressionLevel: 9, // Maximum compression
+          adaptiveFiltering: true // Better compression with adaptive filtering
+        });
         
       case 'webp':
         return image.webp({ 
           quality: quality || 80,
-          lossless: lossless || false
+          lossless: lossless || false,
+          smartSubsample: true // Better quality with smart subsampling
         });
         
       case 'avif':
         return image.avif({ 
           quality: quality || 50, // AVIF typically uses lower quality values
-          lossless: lossless || false
+          lossless: lossless || false,
+          speed: 3 // Balance between speed and compression (0-8, 0 is slowest/best)
         });
         
       case 'gif':
@@ -352,7 +383,8 @@ class ImageProcessor {
         return image.jpeg({ 
           quality: compressionType === 'lossless' ? 100 : (
             compressionType === 'glossy' ? 90 : (quality || 80)
-          )
+          ),
+          mozjpeg: true // Use MozJPEG for better compression
         });
         
       case 'png':
@@ -360,7 +392,8 @@ class ImageProcessor {
           quality: quality || 80,
           compressionLevel: compressionType === 'lossless' ? 0 : (
             compressionType === 'glossy' ? 6 : 9
-          )
+          ),
+          adaptiveFiltering: true
         });
         
       case 'webp':
@@ -368,7 +401,8 @@ class ImageProcessor {
           quality: compressionType === 'lossless' ? 100 : (
             compressionType === 'glossy' ? 90 : (quality || 80)
           ),
-          lossless: compressionType === 'lossless'
+          lossless: compressionType === 'lossless',
+          smartSubsample: true
         });
         
       case 'avif':
@@ -376,7 +410,8 @@ class ImageProcessor {
           quality: compressionType === 'lossless' ? 100 : (
             compressionType === 'glossy' ? 70 : (quality || 50)
           ),
-          lossless: compressionType === 'lossless'
+          lossless: compressionType === 'lossless',
+          speed: 3 // Balance between speed and compression
         });
         
       default:
