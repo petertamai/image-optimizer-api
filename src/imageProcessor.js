@@ -11,7 +11,7 @@ sharp.cache(false); // Disable caching to reduce memory usage
 sharp.simd(true); // Enable SIMD if available
 
 /**
- * Image Processor - Handles all image transformation operations
+ * Image Processor - Handles all image transformation operations /fixes
  */
 class ImageProcessor {
   /**
